@@ -7,6 +7,7 @@ import re
 
 CHOOSING, SEND_LINK_YOUTUBE, HISTORY_YOUTUBE, RETURN_HOME = range(4)
 
+
 def progress_hook(d, context: CallbackContext):
     if d['status'] == 'downloading':
         percent = d['downloaded_bytes'] / d['total_bytes'] * 100
@@ -26,9 +27,11 @@ def progress_hook(d, context: CallbackContext):
             os.remove(filename)
             print(f"فایل {filename} حذف شد.")
 
+
 def is_valid_url(url):
     regex = r'(https?://[^\s]+)'
     return re.match(regex, url) is not None
+
 
 async def download_video(update: Update, context: CallbackContext, video_link: str):
     chat_id = update.message.chat_id
@@ -48,10 +51,21 @@ async def download_video(update: Update, context: CallbackContext, video_link: s
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([video_link])
 
+        # بعد از دانلود و ارسال فایل به تلگرام، حذف فایل
+        filename = ydl.prepare_filename(ydl.extract_info(video_link, download=False))
+
         await update.message.reply_text("ویدیو با موفقیت دانلود شد!")
+
+        with open(filename, 'rb') as audio:
+            await update.message.reply_video(video=audio)  # ارسال ویدیو به تلگرام
+
+        # حذف فایل بعد از ارسال
+        os.remove(filename)
+        print(f"فایل {filename} حذف شد.")
 
     except Exception as e:
         await update.message.reply_text(f"خطا در دانلود ویدیو: {e}")
+
 
 async def handle_menu(update: Update, context: CallbackContext):
     choice = update.message.text
@@ -61,6 +75,7 @@ async def handle_menu(update: Update, context: CallbackContext):
 
     await update.message.reply_text("گزینه معتبر انتخاب کنید")
     return CHOOSING
+
 
 async def show_download_history(update: Update, context: CallbackContext):
     user_id = update.effective_user.id
@@ -75,6 +90,7 @@ async def show_download_history(update: Update, context: CallbackContext):
 
     await update.message.reply_text(history_message)
     return ConversationHandler.END
+
 
 def get_download_history(user_id):
     return [
