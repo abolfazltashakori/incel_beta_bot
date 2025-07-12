@@ -4,12 +4,13 @@ from telegram import Update, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, CallbackContext, MessageHandler, filters, ConversationHandler
 
 from app_MG.APARAT import download_aparat_video
+from app_MG.TIKTOK import download_tiktok_video
 from app_MG.YOUTUBE import download_video
 from download_history import show_download_history
 from database_MG import *
 from app_MG import APARAT
-
-CHOOSING, SEND_LINK_YOUTUBE, HISTORY_YOUTUBE, SEND_LINK_APARAT = range(4)
+from app_MG import TIKTOK
+CHOOSING, SEND_LINK_YOUTUBE, HISTORY_YOUTUBE, SEND_LINK_APARAT,SEND_LINK_TIKTOK = range(5)
 
 def is_valid_url(url):
     regex = r'(https?://[^\s]+)'
@@ -29,7 +30,7 @@ async def main_menu(update: Update, context: CallbackContext):
                     default_auther, default_number, default_ban)
 
     keyboard = [
-        [KeyboardButton("اسپاتیفای"), KeyboardButton("ساند کلاود")],
+        [KeyboardButton("اسپاتیفای"), KeyboardButton("ساند کلاود"), KeyboardButton("تیک تاک")],
         [KeyboardButton("یوتیوب"), KeyboardButton("آپارات")],
         [KeyboardButton("فروشگاه"), KeyboardButton("تنظیمات | مدیریت جساب")],
         [KeyboardButton("فایل به لینک")]
@@ -48,7 +49,16 @@ async def handle_menu(update: Update, context: CallbackContext):
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
         await update.message.reply_text("انتخاب کنید", reply_markup=reply_markup)
-
+    elif choice == "تیک تاک":
+        keyboard = [
+            [KeyboardButton("ارسال لینک") , KeyboardButton("سوابق دانلود")],
+            [KeyboardButton("بازگشت")]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        await update.message.reply_text("انتخاب کنید", reply_markup=reply_markup)
+        if choice == "ارسال لینک":
+            await update.message.reply_text("لطفاً لینک ویدیوی تیک تاک را ارسال کنید.")
+            return SEND_LINK_TIKTOK
     elif choice == "یوتیوب":
         keyboard = [
             [KeyboardButton("ارسال لینک"), KeyboardButton("سوابق دانلود")],
@@ -127,7 +137,7 @@ async def show_download_history(update: Update, context: CallbackContext):
 
 def main():
     create_table()
-    create_download_history_table()
+
     application = Application.builder().token('7631908261:AAFOFL57VBPsNTVP6msncTuy6O21Qzjgc5I').build()
 
     conversation_handler = ConversationHandler(
@@ -137,6 +147,7 @@ def main():
             SEND_LINK_YOUTUBE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_video_link)],
             HISTORY_YOUTUBE: [MessageHandler(filters.TEXT & ~filters.COMMAND, show_download_history)],
             SEND_LINK_APARAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, download_aparat_video)],
+            SEND_LINK_TIKTOK: [MessageHandler(filters.TEXT & ~filters.COMMAND, download_tiktok_video)]
         },
         fallbacks=[],
     )
