@@ -14,4 +14,4 @@
 .youtube.com	TRUE	/tv	TRUE	1785138104	__Secure-YT_DERP	CNHmlZcR
 .tiktok.com	TRUE	/	FALSE	1783412348	ttwid	1%7C-o7X5Va97VH__3I6eVBJxNXN0GyHX8njWgBtoKZ8_OM%7C1752308348%7Cbc279ca30a7ce6958bdacdb4d648feddd1ac7f5289aaea4f9cb17936878ef8df
 .tiktok.com	TRUE	/	TRUE	0	tt_csrf_token	lUrtrimn--FUV2-Uu0PRdguLohO7_M46zKNs
-.tiktok.com	TRUE	/	TRUE	1767860348	tt_chain_token	0UAHpIrIxCIU2b5BedmDgQ==
+.tiktok.com	TRUE	/	TRUE	1767864528	tt_chain_token	0UAHpIrIxCIU2b5BedmDgQ==
