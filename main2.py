@@ -4,7 +4,7 @@ from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboard
 from telegram.ext import Application,CommandHandler, CallbackContext, MessageHandler, filters, ConversationHandler
 from telegram.error import BadRequest
 from telegram.ext import CallbackQueryHandler
-from app_MG.APARAT import download_aparat_video
+from app_MG.APARAT import *
 from app_MG.INSTAGRAM import download_instagram_video
 from app_MG.TIKTOK import download_tiktok_video
 from app_MG.VPN_STORE import *
@@ -14,8 +14,7 @@ from database_MG import *
 from app_MG import APARAT
 from app_MG import TIKTOK
 from app_MG import *
-CHOOSING,SEND_VPN_MENU ,SEND_LINK_YOUTUBE, HISTORY_YOUTUBE, SEND_LINK_APARAT, SEND_LINK_TIKTOK,SEND_INSTA_LINK = range(7)
-
+WAITING_FOR_LINK = range(1)
 CHANNELS = [
     {'name': 'IncelGP', 'username': '@incel_gr'},
     # اضافه کردن دیگر کانال‌ها
@@ -113,6 +112,11 @@ async def handle_menu_callback(update: Update, context: CallbackContext):
         await normal3_menu(query)
     elif data == "normal4":
         await normal4_menu(query)
+    elif data == "aparat":
+        await aparat_menu(update, context)
+    elif data == "aparat_link":
+        await aparat_link(update, context)
+
 
 
 def main():
@@ -121,6 +125,7 @@ def main():
     # ثبت CommandHandler و CallbackQueryHandler
     application.add_handler(CommandHandler('start', check_membership_and_show_menu))
     application.add_handler(CallbackQueryHandler(handle_menu_callback))  # ثبت CallbackQueryHandler برای پردازش کلیک‌ها
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_aparat_video))  # دریافت لینک و دانلود ویدیو
 
     application.run_polling()
 

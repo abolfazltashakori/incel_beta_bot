@@ -1,88 +1,58 @@
-import yt_dlp
 import os
-from telegram import Update
-from telegram.ext import ConversationHandler, CommandHandler, CallbackContext, MessageHandler, filters
-from functools import partial
-import re
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import CallbackContext, CallbackQueryHandler, MessageHandler, filters, Application
+import yt_dlp
 
-CHOOSING, SEND_LINK_YOUTUBE, HISTORY_YOUTUBE, RETURN_HOME = range(4)
-
-async def progress_hook(d, context: CallbackContext):
+# تابعی برای چاپ لاگ‌های مربوط به دانلود
+def progress_hook(d):
     if d['status'] == 'downloading':
         percent = d['downloaded_bytes'] / d['total_bytes'] * 100
-        speed = d['speed']
+        speed = d['speed'] / 1024  # تبدیل سرعت به کیلوبایت در ثانیه
         eta = d['eta']
-        progress_message = f"در حال دانلود: {percent:.1f}%\n"
-        progress_message += f"سرعت: {speed / 1024:.2f} KB/s\n"
-        progress_message += f"زمان باقی‌مانده: {eta}s"
-
-        chat_id = d.get('chat_id')
-        if chat_id:
-            await context.bot.send_message(chat_id=chat_id, text=progress_message)
-
+        print(f"در حال دانلود: {percent:.2f}% | سرعت دانلود: {speed:.2f} KB/s | ETA: {eta}s")
     elif d['status'] == 'finished':
-        filename = d['filename']
-        if os.path.exists(filename):
-            os.remove(filename)
-            print(f"فایل {filename} حذف شد.")
+        print(f"دانلود تمام شد: {d['filename']}")
 
-def is_valid_url(url):
-    regex = r'(https?://[^\s]+)'
-    return re.match(regex, url) is not None
+# منوی آپارات
+async def aparat_menu(update: Update, context: CallbackContext):
+    keyboard = [
+        [InlineKeyboardButton("ارسال لینک", callback_data="aparat_link")],
+        [InlineKeyboardButton("بازگشت", callback_data="back_to_main")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.callback_query.edit_message_text("عملیات مورد نظر را انتخاب کنید", reply_markup=reply_markup)
 
+# درخواست لینک از کاربر
+async def aparat_link(update: Update, context: CallbackContext):
+    # از کاربر خواسته می‌شود که لینک ویدیو را ارسال کند
+    await update.callback_query.answer()
+    await update.callback_query.edit_message_text("لطفاً لینک ویدیوی آپارات را ارسال کنید.")
+    return "WAITING_FOR_LINK"  # وضعیت برای دریافت لینک
+
+# دانلود ویدیو از آپارات
 async def download_aparat_video(update: Update, context: CallbackContext):
-    url = update.message.text
-    chat_id = update.message.chat_id
-
-    progress_with_context = partial(progress_hook, context=context)
-
-    ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
-        'outtmpl': '%(title)s.%(ext)s',
-        'progress_hooks': [progress_with_context],  # ارسال context به progress_hook
-        'cookiefile': 'cookies.txt',
-        'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferredformat': 'mp4',
-        }],
-    }
-
-    await update.message.reply_text("در حال دانلود ویدیو...")
-
+    url = update.message.text  # دریافت لینک ویدیو از پیام
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            await ydl.download([url])
+        ydl_opts = {
+            'format': 'bestvideo+bestaudio/best',  # دانلود بهترین کیفیت ویدیو و صدا
+            'outtmpl': 'downloads/%(title)s.%(ext)s',  # محل ذخیره فایل
+            'quiet': True,  # جلوگیری از چاپ اطلاعات اضافی
+            'progress_hooks': [progress_hook],  # اضافه کردن تابع برای لاگ‌ها
+        }
 
-        await update.message.reply_text("ویدیو با موفقیت دانلود شد!")
+        # دانلود ویدیو از آپارات
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
+
+            # ارسال ویدیو به تلگرام
+            await update.message.reply_text("ویدیو دانلود شد! در حال ارسال...")
+            await update.message.reply_video(open(file_path, 'rb'))
+
+            # حذف فایل پس از ارسال
+            os.remove(file_path)
 
     except Exception as e:
-        await update.message.reply_text(f"خطا در دانلود ویدیو: {e}")
+        await update.message.reply_text(f"خطا در دانلود ویدیو: {str(e)}")
 
-async def handle_menu(update: Update, context: CallbackContext):
-    choice = update.message.text
-
-    if choice == "ارسال لینک":
-        return SEND_LINK_YOUTUBE
-
-    await update.message.reply_text("گزینه معتبر انتخاب کنید")
-    return CHOOSING
-
-async def show_download_history(update: Update, context: CallbackContext):
-    user_id = update.effective_user.id
-    history = get_download_history(user_id)
-
-    if history:
-        history_message = "سوابق دانلود شما:\n"
-        for record in history:
-            history_message += f"- {record['title']} (لینک: {record['link']})\n"
-    else:
-        history_message = "هیچ سوابق دانلودی یافت نشد."
-
-    await update.message.reply_text(history_message)
-    return ConversationHandler.END
-
-def get_download_history(user_id):
-    return [
-        {"title": "ویدیو 1", "link": "https://youtu.be/xxxxxx"},
-        {"title": "ویدیو 2", "link": "https://youtu.be/yyyyyy"},
-    ]
+    return "WAITING_FOR_LINK"  # برگشت به وضعیت بعد از دانلود
