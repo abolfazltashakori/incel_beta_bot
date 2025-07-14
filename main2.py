@@ -8,12 +8,7 @@ from app_MG.APARAT import *
 from app_MG.INSTAGRAM import download_instagram_video
 from app_MG.TIKTOK import download_tiktok_video
 from app_MG.VPN_STORE import *
-from app_MG.YOUTUBE import download_video
-from download_history import show_download_history
-from database_MG import *
-from app_MG import APARAT
-from app_MG import TIKTOK
-from app_MG import *
+from app_MG.TIKTOK import *
 WAITING_FOR_LINK = range(1)
 CHANNELS = [
     {'name': 'IncelGP', 'username': '@incel_gr'},
@@ -116,7 +111,10 @@ async def handle_menu_callback(update: Update, context: CallbackContext):
         await aparat_menu(update, context)
     elif data == "aparat_link":
         await aparat_link(update, context)
-
+    elif data == "tiktok":
+        await tiktok_menu(update, context)
+    elif data == "tiktok_link":
+        await tiktok_link(update, context)
 
 
 def main():
@@ -126,7 +124,7 @@ def main():
     application.add_handler(CommandHandler('start', check_membership_and_show_menu))
     application.add_handler(CallbackQueryHandler(handle_menu_callback))  # ثبت CallbackQueryHandler برای پردازش کلیک‌ها
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_aparat_video))  # دریافت لینک و دانلود ویدیو
-
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_tiktok_video))
     application.run_polling()
 
 if __name__ == '__main__':

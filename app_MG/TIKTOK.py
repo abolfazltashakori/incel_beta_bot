@@ -1,90 +1,66 @@
-import yt_dlp
 import os
-import random
-import string
-from telegram import Update
-from functools import partial
-from database_MG import *
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import CallbackContext, CallbackQueryHandler, MessageHandler, filters, Application
+import yt_dlp
 
-
-# تابع برای ایجاد نام رندوم برای فایل
-def generate_random_filename(extension="mp4", length=10):
-    """تولید نام رندوم برای فایل‌ها"""
-    characters = string.ascii_letters + string.digits
-    random_string = ''.join(random.choice(characters) for _ in range(length))
-    return f"{random_string}.{extension}"
-
-
-# تابع نمایش درصد پیشرفت دانلود
-async def progress_hook(d, context):
+# تابعی برای چاپ لاگ‌های مربوط به دانلود
+def progress_hook(d):
     if d['status'] == 'downloading':
-        downloaded_bytes = d.get('downloaded_bytes', 0)
-        total_bytes = d.get('total_bytes', 0)
-        speed = d.get('speed', 0)
+        percent = d.get('downloaded_bytes', 0) / d.get('total_bytes', 1) * 100  # جلوگیری از خطای تقسیم بر صفر
+        speed = d.get('speed', 0) / 1024  # تبدیل سرعت به کیلوبایت در ثانیه
         eta = d.get('eta', 0)
-
-        if total_bytes and downloaded_bytes is not None:
-            percent = (downloaded_bytes / total_bytes) * 100
-            progress_message = f"در حال دانلود: {percent:.1f}%\n"
-            if speed is not None:
-                progress_message += f"سرعت: {speed / 1024:.2f} KB/s\n"
-            if eta is not None:
-                progress_message += f"زمان باقی‌مانده: {eta}s"
-
-            chat_id = d.get('chat_id')
-            if chat_id:
-                await context.bot.send_message(chat_id=chat_id, text=progress_message)
-
+        print(f"در حال دانلود: {percent:.2f}% | سرعت دانلود: {speed:.2f} KB/s | ETA: {eta}s")
     elif d['status'] == 'finished':
-        filename = d['filename']
-        print(f"فایل {filename} دانلود شد و آماده ارسال است.")
+        print(f"دانلود تمام شد: {d['filename']}")
 
+# منوی تیک تاک
+async def tiktok_menu(update: Update, context: CallbackContext):
+    keyboard = [
+        [InlineKeyboardButton("ارسال لینک", callback_data="tiktok_link")],
+        [InlineKeyboardButton("بازگشت", callback_data="back_to_main")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.callback_query.edit_message_text("عملیات مورد نظر را انتخاب کنید", reply_markup=reply_markup)
 
-async def download_tiktok_video(update: Update, context):
-    url = update.message.text
-    chat_id = update.message.chat_id
+# درخواست لینک از کاربر
+async def tiktok_link(update: Update, context: CallbackContext):
+    # از کاربر خواسته می‌شود که لینک ویدیو را ارسال کند
+    await update.callback_query.answer()
+    await update.callback_query.edit_message_text("لطفاً لینک ویدیوی تیک تاک را ارسال کنید.")
+    return "WAITING_FOR_LINK"  # وضعیت برای دریافت لینک
 
-    if not "https://www.tiktok.com/" in url:
-        await update.message.reply_text("لینک وارد شده معتبر نیست. لطفاً یک لینک ویدیوی صحیح ارسال کنید.")
-        return
-
-    progress_with_context = partial(progress_hook, context=context)
-
-    ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
-        'outtmpl': '%(title)s.%(ext)s',  # فقط برای ذخیره نام اصلی به صورت موقت
-        'progress_hooks': [progress_with_context],
-        'cookiefile': 'tiktok_cooki.txt',
-        'postprocessors': [{
-            'key': 'FFmpegVideoConvertor',
-            'preferredformat': 'mp4',
-        }],
-    }
-
-    await update.message.reply_text("در حال دانلود ویدیو...")
-
+# دانلود ویدیو از تیک تاک
+async def download_tiktok_video(update: Update, context: CallbackContext):
+    url = update.message.text  # دریافت لینک ویدیو از پیام
     try:
+        ydl_opts = {
+            'format': 'bestvideo+bestaudio/best',  # دانلود بهترین کیفیت ویدیو و صدا
+            'outtmpl': 'downloads/%(title)s.%(ext)s',  # محل ذخیره فایل
+            'quiet': True,  # جلوگیری از چاپ اطلاعات اضافی
+            'progress_hooks': [progress_hook],  # استفاده از hook برای چاپ لاگ‌ها
+        }
+
+        # دانلود ویدیو از تیک تاک
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
 
-        # نام رندوم برای فایل
-        random_filename = generate_random_filename(extension="mp4")
-        downloaded_filename = ydl.prepare_filename(ydl.extract_info(url, download=False))
+            # ارسال فایل به تلگرام
+            await update.message.reply_text("ویدیو دانلود شد! در حال ارسال...")
+            await update.message.reply_video(open(file_path, 'rb'))
 
-        # تغییر نام فایل
-        os.rename(downloaded_filename, random_filename)
+            # حذف فایل پس از ارسال
+            os.remove(file_path)
 
-        save_download_to_db(update.effective_user.id, random_filename, url)
-
-        await update.message.reply_text("ویدیو با موفقیت دانلود شد!")
-
-        # ارسال فایل به کاربر
-        file_path = os.path.join(os.getcwd(), random_filename)
-        if os.path.exists(file_path):
-            await update.message.reply_video(video=open(file_path, 'rb'))  # ارسال ویدیو به کاربر
-
-
-            print(f"فایل {file_path} پس از ارسال حذف شد.")
+            # پس از ارسال ویدیو، منو دوباره نمایش داده می‌شود
+            keyboard = [
+                [InlineKeyboardButton("ارسال لینک", callback_data="tiktok_link")],
+                [InlineKeyboardButton("بازگشت", callback_data="back_to_main")],
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text("عملیات مورد نظر را انتخاب کنید", reply_markup=reply_markup)
 
     except Exception as e:
-        await update.message.reply_text(f"خطا در دانلود ویدیو: {e}")
+        await update.message.reply_text(f"خطا در دانلود ویدیو: {str(e)}")
+
+    return "WAITING_FOR_LINK"  # برگشت به وضعیت بعد از دانلود
