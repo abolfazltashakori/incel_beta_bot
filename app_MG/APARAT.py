@@ -3,13 +3,22 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext, CallbackQueryHandler, MessageHandler, filters, Application
 import yt_dlp
 
-# تابعی برای چاپ لاگ‌های مربوط به دانلود
-def progress_hook(d):
+# تابعی برای چاپ لاگ‌های مربوط به دانلود و ارسال پیشرفت به تلگرام
+def progress_hook(d, context: CallbackContext):
     if d['status'] == 'downloading':
         percent = d['downloaded_bytes'] / d['total_bytes'] * 100
         speed = d['speed'] / 1024  # تبدیل سرعت به کیلوبایت در ثانیه
         eta = d['eta']
-        print(f"در حال دانلود: {percent:.2f}% | سرعت دانلود: {speed:.2f} KB/s | ETA: {eta}s")
+
+        # دریافت chat_id از context
+        chat_id = context.chat_data.get('chat_id')
+        if chat_id:
+            progress_message = f"در حال دانلود: {percent:.2f}% | سرعت دانلود: {speed:.2f} KB/s | زمان باقی‌مانده: {eta}s"
+            # ویرایش پیام پیشرفت با استفاده از message_id
+            message_id = context.chat_data.get('message_id')
+            if message_id:
+                context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=progress_message)
+
     elif d['status'] == 'finished':
         print(f"دانلود تمام شد: {d['filename']}")
 
@@ -33,11 +42,20 @@ async def aparat_link(update: Update, context: CallbackContext):
 async def download_aparat_video(update: Update, context: CallbackContext):
     url = update.message.text  # دریافت لینک ویدیو از پیام
     try:
+        # ذخیره chat_id و message_id در context برای استفاده در progress_hook
+        chat_id = update.message.chat_id
+        context.chat_data['chat_id'] = chat_id  # ذخیره chat_id برای استفاده در progress_hook
+
+        # ارسال پیام ابتدایی برای نشان دادن پیشرفت
+        progress_message = "در حال دانلود..."
+        progress_message_sent = await update.message.reply_text(progress_message)
+        context.chat_data['message_id'] = progress_message_sent.message_id  # ذخیره message_id برای ویرایش پیام
+
         ydl_opts = {
             'format': 'bestvideo+bestaudio/best',  # دانلود بهترین کیفیت ویدیو و صدا
             'outtmpl': 'downloads/%(title)s.%(ext)s',  # محل ذخیره فایل
-            'quiet': True,  # جلوگیری از چاپ اطلاعات اضافی
-            'progress_hooks': [progress_hook],  # اضافه کردن تابع برای لاگ‌ها
+            'quiet': False,  # جلوگیری از چاپ اطلاعات اضافی
+            'progress_hooks': [lambda d: progress_hook(d, context)],  # ارسال context به progress_hook
         }
 
         # دانلود ویدیو از آپارات
