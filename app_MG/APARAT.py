@@ -36,21 +36,24 @@ async def download_aparat_video(update: Update, context: CallbackContext):
         ydl_opts = {
             'format': 'bestvideo+bestaudio/best',  # دانلود بهترین کیفیت ویدیو و صدا
             'outtmpl': 'downloads/%(title)s.%(ext)s',  # محل ذخیره فایل
-            'quiet': False,  # جلوگیری از چاپ اطلاعات اضافی
-            'progress_hooks': [progress_hook],  # اضافه کردن تابع برای لاگ‌ها
+            'quiet': True,  # جلوگیری از چاپ اطلاعات اضافی
         }
 
-        # دانلود ویدیو از آپارات
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info_dict)
 
-            # ارسال ویدیو به تلگرام
+            # ارسال فایل به صورت Document (فایل معمولی)
             await update.message.reply_text("ویدیو دانلود شد! در حال ارسال...")
-            await update.message.reply_video(open(file_path, 'rb'))
+            await update.message.reply_document(open(file_path, 'rb'))
 
             # حذف فایل پس از ارسال
             os.remove(file_path)
+
+    except Exception as e:
+        await update.message.reply_text(f"خطا در دانلود ویدیو: {str(e)}")
+
+
 
     except Exception as e:
         await update.message.reply_text(f"خطا در دانلود ویدیو: {str(e)}")
