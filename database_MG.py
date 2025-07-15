@@ -1,7 +1,7 @@
 import sqlite3
 
 def create_connection():
-    return sqlite3.connect('1mydatabase.db')
+    return sqlite3.connect('main_mydatabase.db')
 
 def create_table():
     conn = create_connection()
@@ -57,29 +57,4 @@ def save_user_to_db(telegram_id, first_name, last_name, username, balance, authe
     finally:
         conn.close()
 
-def get_download_history(user_id):
-    conn = create_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute('SELECT title, link FROM downloads WHERE user_id=?', (user_id,))
-        history = cursor.fetchall()
-        return history
-    except sqlite3.Error as e:
-        print(f"Database error: {e}")
-        return []
-    finally:
-        conn.close()
 
-def save_download_to_db(user_id, title, link):
-    conn = create_connection()
-    try:
-        cursor = conn.cursor()
-        cursor.execute('''
-        INSERT INTO downloads (user_id, title, link)
-        VALUES (?, ?, ?)
-        ''', (user_id, title, link))
-        conn.commit()
-    except sqlite3.Error as e:
-        print(f"Database error: {e}")
-    finally:
-        conn.close()

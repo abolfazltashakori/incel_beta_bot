@@ -1,38 +1,67 @@
-import yt_dlp
-from telegram import Update
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackContext, filters
 import os
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import CallbackContext, CallbackQueryHandler, MessageHandler, filters, Application
+import yt_dlp
 
+# تابعی برای چاپ لاگ‌های مربوط به دانلود
+def progress_hook(d):
+    if d['status'] == 'downloading':
+        percent = d.get('downloaded_bytes', 0) / d.get('total_bytes', 1) * 100  # جلوگیری از خطای تقسیم بر صفر
+        speed = d.get('speed', 0) / 1024  # تبدیل سرعت به کیلوبایت در ثانیه
+        eta = d.get('eta', 0)
+        print(f"در حال دانلود: {percent:.2f}% | سرعت دانلود: {speed:.2f} KB/s | ETA: {eta}s")
+    elif d['status'] == 'finished':
+        print(f"دانلود تمام شد: {d['filename']}")
 
+# منوی اینستاگرام
+async def instagram_menu(update: Update, context: CallbackContext):
+    keyboard = [
+        [InlineKeyboardButton("ارسال لینک", callback_data="instagram_link")],
+        [InlineKeyboardButton("بازگشت", callback_data="back_to_main")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.callback_query.edit_message_text("عملیات مورد نظر را انتخاب کنید", reply_markup=reply_markup)
 
+# درخواست لینک از کاربر
+async def instagram_link(update: Update, context: CallbackContext):
+    # از کاربر خواسته می‌شود که لینک ویدیو را ارسال کند
+    await update.callback_query.answer()
+    await update.callback_query.edit_message_text("لطفاً لینک ویدیوی اینستاگرام را ارسال کنید.")
+    return "WAITING_FOR_LINK"  # وضعیت برای دریافت لینک
 
-# تابع برای دانلود ویدیو از اینستاگرام
+# دانلود ویدیو از اینستاگرام
 async def download_instagram_video(update: Update, context: CallbackContext):
-    url = update.message.text
-    if not "https://www.instagram.com/" in url:
-        await update.message.reply_text("لینک وارد شده معتبر نیست. لطفاً یک لینک ویدیوی صحیح از اینستاگرام ارسال کنید.")
-        return
-
-    # گزینه‌های دانلود yt-dlp
-    ydl_opts = {
-        'format': 'best',
-        'outtmpl': '%(title)s.%(ext)s',  # نام فایل با عنوان ویدیو
-        'noplaylist': True,  # جلوگیری از دانلود پلی‌لیست‌ها
-    }
-
-    # دانلود و ارسال ویدیو
+    url = update.message.text  # دریافت لینک ویدیو از پیام
     try:
-        await update.message.reply_text("در حال دانلود ویدیو از اینستاگرام...")
+        ydl_opts = {
+            'format': 'bestvideo+bestaudio/best',  # دانلود بهترین کیفیت ویدیو و صدا
+            'outtmpl': 'downloads/%(title)s.%(ext)s',  # محل ذخیره فایل
+            'quiet': True,  # جلوگیری از چاپ اطلاعات اضافی
+            'cookies': 'cookies.txt',  # مسیر فایل کوکی‌ها (باید از مرورگر خود استخراج کنید)
+            'progress_hooks': [progress_hook],  # استفاده از hook برای چاپ لاگ‌ها
+        }
 
+        # دانلود ویدیو از اینستاگرام
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
+            info_dict = ydl.extract_info(url, download=True)
+            file_path = ydl.prepare_filename(info_dict)
 
-        # ارسال فایل به کاربر
-        await update.message.reply_video(video=open(filename, 'rb'))
+            # ارسال فایل به تلگرام
+            await update.message.reply_text("ویدیو دانلود شد! در حال ارسال...")
+            await update.message.reply_video(open(file_path, 'rb'))
 
-        # حذف فایل پس از ارسال
-        os.remove(filename)
+            # حذف فایل پس از ارسال
+            os.remove(file_path)
+
+            # پس از ارسال ویدیو، منو دوباره نمایش داده می‌شود
+            keyboard = [
+                [InlineKeyboardButton("ارسال لینک", callback_data="instagram_link")],
+                [InlineKeyboardButton("بازگشت", callback_data="back_to_main")],
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text("عملیات مورد نظر را انتخاب کنید", reply_markup=reply_markup)
 
     except Exception as e:
-        await update.message.reply_text(f"خطا در دانلود ویدیو: {e}")
+        await update.message.reply_text(f"خطا در دانلود ویدیو: {str(e)}")
+
+    return "WAITING_FOR_LINK"  # برگشت به وضعیت بعد از دانلود

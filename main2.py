@@ -5,10 +5,11 @@ from telegram.ext import Application,CommandHandler, CallbackContext, MessageHan
 from telegram.error import BadRequest
 from telegram.ext import CallbackQueryHandler
 from app_MG.APARAT import *
-from app_MG.INSTAGRAM import download_instagram_video
-from app_MG.TIKTOK import download_tiktok_video
+from app_MG.YOUTUBE import *
 from app_MG.VPN_STORE import *
 from app_MG.TIKTOK import *
+from database_MG import *
+from app_MG.filetolink import *
 WAITING_FOR_LINK = range(1)
 CHANNELS = [
     {'name': 'IncelGP', 'username': '@incel_gr'},
@@ -32,6 +33,20 @@ async def is_user_member(update: Update, context: CallbackContext, channel_usern
 # تابع برای نمایش منوی اصلی VPN یا نمایش پیام عضویت
 async def check_membership_and_show_menu(update: Update, context: CallbackContext):
     user = update.effective_user
+    user = update.message.from_user
+    telegram_id = user.id
+    first_name = user.first_name
+    last_name = user.last_name if user.last_name else ""
+    username = user.username if user.username else ""
+
+    # برای تست می‌توانیم مقدارهای ثابت برای balance، auther، number و ban بدهیم
+    balance = 0
+    auther = False  # به دلخواه تغییر دهید
+    number = "user_number"  # به دلخواه تغییر دهید
+    ban = False  # به دلخواه تغییر دهید
+
+    # ذخیره اطلاعات کاربر در پایگاه داده
+    save_user_to_db(telegram_id, first_name, last_name, username, balance, auther, number, ban)
 
     for channel in CHANNELS:
         is_member = await is_user_member(update, context, channel['username'])
@@ -115,9 +130,17 @@ async def handle_menu_callback(update: Update, context: CallbackContext):
         await tiktok_menu(update, context)
     elif data == "tiktok_link":
         await tiktok_link(update, context)
-
+    elif data == "youtube":
+        await youtube_menu(update, context)
+    elif data == "youtube_link":
+        await youtube_link(update, context)
+    elif data == "file_to_link":
+        await file_menu(update, context)
+    elif data == "file_handler":
+        await file_handler(update, context)
 
 def main():
+    create_table()
     application = Application.builder().token('7235750472:AAEbaq6LHqpLrc4Ohur8fEFYgPLD_f8FHek').build()
 
     # ثبت CommandHandler و CallbackQueryHandler
@@ -125,6 +148,9 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_menu_callback))  # ثبت CallbackQueryHandler برای پردازش کلیک‌ها
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_aparat_video))  # دریافت لینک و دانلود ویدیو
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_tiktok_video))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_youtube_video))
+
+    application.add_handler(MessageHandler(filters.Document.ALL, receive_file))  # پردازش فایل‌ها
     application.run_polling()
 
 if __name__ == '__main__':
