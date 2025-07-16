@@ -139,19 +139,51 @@ async def handle_menu_callback(update: Update, context: CallbackContext):
     elif data == "file_handler":
         await file_handler(update, context)
 
+
+# در main2.py، تابع main را به صورت زیر اصلاح کنید:
+# در تابع main():
+# تغییر فیلتر پیام‌ها برای دریافت انواع فایل‌ها
 def main():
     create_table()
     application = Application.builder().token('7235750472:AAEbaq6LHqpLrc4Ohur8fEFYgPLD_f8FHek').build()
 
-    # ثبت CommandHandler و CallbackQueryHandler
+    # هندلرهای اصلی
     application.add_handler(CommandHandler('start', check_membership_and_show_menu))
-    application.add_handler(CallbackQueryHandler(handle_menu_callback))  # ثبت CallbackQueryHandler برای پردازش کلیک‌ها
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_aparat_video))  # دریافت لینک و دانلود ویدیو
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_tiktok_video))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_youtube_video))
+    application.add_handler(CallbackQueryHandler(handle_menu_callback))
 
-    application.add_handler(MessageHandler(filters.Document.ALL, receive_file))  # پردازش فایل‌ها
+    # تغییر مهم: دریافت انواع فایل‌ها
+    file_filter = (
+            filters.Document.ALL |
+            filters.VIDEO |
+            filters.PHOTO |
+            filters.AUDIO |
+            filters.VOICE |
+            filters.VIDEO_NOTE
+    )
+
+    application.add_handler(MessageHandler(
+        file_filter & ~filters.COMMAND,
+        receive_file
+    ), group=1)
+
+    # هندلر متن
+    application.add_handler(MessageHandler(
+        filters.TEXT & ~filters.COMMAND,
+        handle_text_message
+    ), group=2)
+
     application.run_polling()
+# تابع جدید برای مدیریت پیام‌های متنی
+async def handle_text_message(update: Update, context: CallbackContext):
+    text = update.message.text
+    if 'aparat.com' in text:
+        await download_aparat_video(update, context)
+    elif 'tiktok.com' in text:
+        await download_tiktok_video(update, context)
+    elif 'youtube.com' in text or 'youtu.be' in text:
+        await download_youtube_video(update, context)
+    else:
+        await update.message.reply_text("لطفاً یک لینک معتبر ارسال کنید.")
 
 if __name__ == '__main__':
     main()

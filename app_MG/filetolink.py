@@ -1,17 +1,15 @@
-import aiohttp
+import ftplib
+import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext
 
-# اطلاعات سرور Y
-API_URL = 'https://c708480.parspack.net/upload'  # Endpoint URL سرور Y
-ACCESS_KEY = 'kOA804bqN0kNZseP'  # Access Key سرور Y
-SECRET_KEY = '0xN56PV49K5cR4cbyuK8AJmwp17LsiRD'  # Secret Key سرور Y
-
-# وضعیت منتظر بودن برای فایل
-WAITING_FOR_FILE = False
+# تنظیمات FTP
+FTP_HOST = '185.235.196.18'  # آدرس سرور FTP
+FTP_USER = 'incelspa'  # نام کاربری FTP
+FTP_PASS = 'p3tPE51mX+(hH0'  # رمز عبور FTP
+FTP_DIR = 'public_html'  # پوشه مقصد در سرور
 
 
-# منوی ارسال فایل
 async def file_menu(update: Update, context: CallbackContext):
     keyboard = [
         [InlineKeyboardButton("ارسال فایل", callback_data='file_handler')],
@@ -19,67 +17,95 @@ async def file_menu(update: Update, context: CallbackContext):
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.callback_query.edit_message_text("لطفاً یک فایل ارسال کنید.", reply_markup=reply_markup)
-    return WAITING_FOR_FILE  # ورود به مرحله دریافت فایل
+    context.user_data['waiting_for_file'] = True
 
 
-# پردازش دکمه ارسال فایل
 async def file_handler(update: Update, context: CallbackContext):
-    global WAITING_FOR_FILE
-    WAITING_FOR_FILE = True  # حالت منتظر بودن فایل را فعال می‌کنیم
+    query = update.callback_query
+    await query.answer()
 
-    if update.message:
-        await update.message.reply_text("لطفاً یک فایل ارسال کنید.")
-    elif update.callback_query:
-        await update.callback_query.answer("لطفاً یک فایل ارسال کنید.")
+    context.user_data['waiting_for_file'] = True
+    keyboard = [[InlineKeyboardButton("انصراف", callback_data='cancel_upload')]]
+    await query.edit_message_text(
+        "✅ حالت دریافت فایل فعال شد!\nلطفاً فایل خود را ارسال کنید.",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 
-# دریافت و آپلود فایل
 async def receive_file(update: Update, context: CallbackContext):
-    global WAITING_FOR_FILE
+    if not context.user_data.get('waiting_for_file'):
+        await update.message.reply_text("لطفاً ابتدا دکمه 'ارسال فایل' را انتخاب کنید.")
+        return
 
-    # اگر در حالت دریافت فایل هستیم
-    if WAITING_FOR_FILE:
-        if update.message and update.message.document:
-            file = update.message.document
-            file_id = file.file_id
-            file_name = file.file_name
+    # شناسایی انواع مختلف فایل‌ها
+    file = None
+    file_name = None
 
-            # دریافت فایل از تلگرام
-            file = await context.bot.get_file(file_id)
-            await file.download_to_drive(f'./{file_name}')
+    if update.message.document:
+        file = update.message.document
+        file_name = file.file_name
+    elif update.message.video:
+        file = update.message.video
+        file_name = file.file_name if file.file_name else f"video_{file.file_id}.mp4"
+    elif update.message.audio:
+        file = update.message.audio
+        file_name = file.file_name if file.file_name else f"audio_{file.file_id}.mp3"
+    elif update.message.photo:
+        # برای عکس‌ها، بزرگترین سایز را انتخاب می‌کنیم
+        file = update.message.photo[-1]
+        file_name = f"photo_{file.file_id}.jpg"
+    elif update.message.voice:
+        file = update.message.voice
+        file_name = f"voice_{file.file_id}.ogg"
+    elif update.message.video_note:
+        file = update.message.video_note
+        file_name = f"video_note_{file.file_id}.mp4"
 
-            # آپلود به سرور Y
-            try:
-                download_link = await upload_to_server_y(f'./{file_name}')
-                await update.message.reply_text(
-                    f"فایل شما با موفقیت آپلود شد. برای دانلود از لینک زیر استفاده کنید:\n{download_link}")
-                WAITING_FOR_FILE = False  # بازنشانی وضعیت پس از دریافت فایل
-            except Exception as e:
-                await update.message.reply_text(f"خطا در آپلود فایل: {str(e)}")
-                WAITING_FOR_FILE = False  # بازنشانی وضعیت پس از خطا
-        else:
-            await update.message.reply_text("لطفاً یک فایل ارسال کنید.")
+    if file:
+        file_path = f"./{file_name}"
+
+        try:
+            # دانلود فایل از تلگرام
+            downloaded_file = await context.bot.get_file(file.file_id)
+            await downloaded_file.download_to_drive(file_path)
+
+            # آپلود به سرور FTP
+            download_link = await upload_to_ftp(file_path, file_name)
+            await update.message.reply_text(f"✅ فایل آپلود شد!\nلینک دانلود: {download_link}")
+
+        except Exception as e:
+            await update.message.reply_text(f"❌ خطا در آپلود: {str(e)}")
+            print(f"Upload error: {str(e)}")  # خطایابی
+        finally:
+            # پاکسازی فایل موقت و بازنشانی حالت
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            context.user_data['waiting_for_file'] = False
     else:
-        await update.message.reply_text("برای ارسال فایل، ابتدا دکمه ارسال فایل را فشار دهید.")
+        await update.message.reply_text("""
+لطفاً یک فایل معتبر ارسال کنید. انواع فایل‌های قابل قبول:
+- فایل مستند (Document)
+- ویدیو
+- عکس
+- صدا
+- ویدیو یادداشت
+""")
 
+async def upload_to_ftp(file_path, file_name):
+    try:
+        # اتصال به سرور FTP
+        with ftplib.FTP(FTP_HOST) as ftp:
+            ftp.login(FTP_USER, FTP_PASS)
 
-# آپلود فایل به سرور Y
-async def upload_to_server_y(file_path):
-    """
-    این تابع به صورت غیرهمزمان فایل را به سرور Y آپلود می‌کند و لینک دانلود را برمی‌گرداند.
-    """
-    headers = {
-        'Access-Key': ACCESS_KEY,
-        'Secret-Key': SECRET_KEY
-    }
+            # تغییر به پوشه مقصد
+            ftp.cwd(FTP_DIR)
 
-    # ارسال درخواست غیرهمزمان با استفاده از aiohttp
-    async with aiohttp.ClientSession() as session:
-        with open(file_path, 'rb') as file:
-            files = {'file': file}
-            async with session.post(API_URL, headers=headers, data=files) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return data.get("download_link")
-                else:
-                    raise Exception(f"خطا در آپلود فایل: {await response.text()}")
+            # آپلود فایل
+            with open(file_path, 'rb') as f:
+                ftp.storbinary(f'STOR {file_name}', f)
+
+            # ساخت لینک دانلود (فرض بر این است که دامنه شما example.com است)
+            return f"http://incel.space/{file_name}"
+
+    except ftplib.all_errors as e:
+        raise Exception(f"خطا در اتصال FTP: {str(e)}")
