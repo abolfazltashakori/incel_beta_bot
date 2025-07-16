@@ -1,14 +1,35 @@
 import ftplib
 import os
 import time
+import random
+import string
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import CallbackContext
 import asyncio
+
 FTP_HOST = '185.235.196.18'
 FTP_USER = 'incelspa'
 FTP_PASS = 'p3tPE51mX+(hH0'
 FTP_PORT = 21
 FTP_DIR = 'public_html'
+
+
+# تابع برای تولید نام فایل جدید
+def generate_filename(telegram_id, original_name=None):
+    """تولید نام فایل با فرمت: telegramid_randomextension.extension"""
+    # تولید رشته تصادفی 6 کاراکتری
+    random_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+
+    # استخراج پسوند فایل
+    if original_name and '.' in original_name:
+        ext = original_name.split('.')[-1].lower()
+        # حذف پسوندهای طولانی (برای امنیت)
+        ext = ext[:10]
+    else:
+        # پسوندهای پیش‌فرض بر اساس نوع محتوا
+        ext = "bin"
+
+    return f"{telegram_id}_{random_str}.{ext}"
 
 
 async def file_menu(update: Update, context: CallbackContext):
@@ -39,57 +60,48 @@ async def receive_file(update: Update, context: CallbackContext):
         return
 
     # شناسایی انواع مختلف محتوا
-    content_types = [
-        update.message.document,
-        update.message.video,
-        update.message.audio,
-        update.message.voice,
-        update.message.video_note,
-        update.message.photo
-    ]
-
     file = None
-    file_name = None
+    original_name = None
     file_size = 0
     file_id = None
 
     # بررسی انواع مختلف محتوا
     if update.message.document:
         file = update.message.document
-        file_name = file.file_name
+        original_name = file.file_name
         file_size = file.file_size
         file_id = file.file_id
     elif update.message.video:
         file = update.message.video
-        file_name = f"video_{file.file_id}.mp4"
+        original_name = f"video_{file.file_id}.mp4"
         file_size = file.file_size
         file_id = file.file_id
     elif update.message.audio:
         file = update.message.audio
-        file_name = file.file_name or f"audio_{file.file_id}.mp3"
+        original_name = file.file_name or f"audio_{file.file_id}.mp3"
         file_size = file.file_size
         file_id = file.file_id
     elif update.message.voice:
         file = update.message.voice
-        file_name = f"voice_{file.file_id}.ogg"
+        original_name = f"voice_{file.file_id}.ogg"
         file_size = file.file_size
         file_id = file.file_id
     elif update.message.video_note:
         file = update.message.video_note
-        file_name = f"video_note_{file.file_id}.mp4"
+        original_name = f"video_note_{file.file_id}.mp4"
         file_size = file.file_size
         file_id = file.file_id
     elif update.message.photo:
         # گرفتن بزرگترین اندازه عکس
         file = update.message.photo[-1]
-        file_name = f"photo_{file.file_id}.jpg"
+        original_name = f"photo_{file.file_id}.jpg"
         file_size = file.file_size
         file_id = file.file_id
 
-
-
     if file:
-        # ... بررسی حجم و محدودیت کاربر ...
+        # تولید نام جدید برای فایل
+        user_id = update.message.from_user.id
+        new_file_name = generate_filename(user_id, original_name)
 
         # ارسال پیام پیشرفت
         progress_message = await update.message.reply_text(
@@ -129,7 +141,7 @@ async def receive_file(update: Update, context: CallbackContext):
                 except Exception:
                     pass
 
-        file_path = f"./{file_name}"
+        file_path = f"./{new_file_name}"
 
         try:
             # دانلود فایل از تلگرام
@@ -138,7 +150,7 @@ async def receive_file(update: Update, context: CallbackContext):
 
             # آپلود با گزارش پیشرفت
             try:
-                download_link = await upload_to_ftp(file_path, file_name, update_progress)
+                download_link = await upload_to_ftp(file_path, new_file_name, update_progress)
 
                 await context.bot.edit_message_text(
                     chat_id=progress_message.chat_id,
@@ -158,13 +170,17 @@ async def receive_file(update: Update, context: CallbackContext):
 
 
 async def upload_to_ftp(file_path, file_name, progress_callback=None, max_retries=3):
+    CHUNK_SIZE = 4194304  # 4MB
+
     for attempt in range(max_retries):
         try:
             with ftplib.FTP() as ftp:
-                # تنظیمات اتصال
+                # تنظیمات بهینه شده
                 ftp.connect(FTP_HOST, FTP_PORT, timeout=60)
                 ftp.login(FTP_USER, FTP_PASS)
-                ftp.set_pasv(True)
+                ftp.set_pasv(True)  # حالت فعال برای عملکرد بهتر
+                ftp.voidcmd('TYPE I')  # حالت باینری
+                ftp.set_debuglevel(0)  # غیرفعال کردن لاگ
                 ftp.cwd(FTP_DIR)
 
                 # ایجاد یک wrapper برای chunk
@@ -188,14 +204,12 @@ async def upload_to_ftp(file_path, file_name, progress_callback=None, max_retrie
                 with open(file_path, 'rb') as f:
                     if progress_callback:
                         while True:
-                            chunk = f.read(10240)  # 10KB per chunk
+                            chunk = f.read(CHUNK_SIZE)
                             if not chunk:
                                 break
 
-                            # استفاده از wrapper برای chunk
                             wrapper = ChunkWrapper(chunk)
                             ftp.storbinary(f"STOR {file_name}", wrapper)
-
                             await progress_callback(chunk)
                     else:
                         ftp.storbinary(f'STOR {file_name}', f)

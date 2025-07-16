@@ -34,14 +34,12 @@ async def is_user_member(update: Update, context: CallbackContext, channel_usern
     except BadRequest:
         return False
 
-# تابع برای نمایش منوی اصلی VPN یا نمایش پیام عضویت
 async def check_membership_and_show_menu(update: Update, context: CallbackContext):
-    user = update.effective_user
-    user = update.message.from_user
+    user = update.effective_user  # استفاده از effective_user
     telegram_id = user.id
     first_name = user.first_name
-    last_name = user.last_name if user.last_name else ""
-    username = user.username if user.username else ""
+    last_name = user.last_name or ""
+    username = user.username or ""
 
     # برای تست می‌توانیم مقدارهای ثابت برای balance، auther، number و ban بدهیم
     balance = 0
@@ -75,25 +73,50 @@ async def check_membership_and_show_menu(update: Update, context: CallbackContex
 
 # منوی اصلی ربات
 async def main_menu(update: Update, context: CallbackContext):
-    user = update.effective_user
-    keyboard = [
-        [InlineKeyboardButton("اسپاتیفای", callback_data='spotify'),
-         InlineKeyboardButton("ساند کلاود", callback_data='soundcloud'),
-         InlineKeyboardButton("تیک تاک", callback_data='tiktok')],
-        [InlineKeyboardButton("یوتیوب", callback_data='youtube'),
-         InlineKeyboardButton("آپارات", callback_data='aparat'),
-         InlineKeyboardButton("اینستاگرام", callback_data='instagram')],
-        [InlineKeyboardButton("فروشگاه", callback_data='shop'),
-         InlineKeyboardButton("فایل به لینک", callback_data='file_to_link')],
-        [InlineKeyboardButton("تنظیمات | مدیریت جساب", callback_data='settings')]
-    ]
+    user = update.effective_user  # استفاده از effective_user برای پشتیبانی از هم callback و هم message
+    admin_id = 5381391685  # تغییر به عددی (بدون کوتیشن)
+
+    if user.id == admin_id:  # مقایسه عددی
+        keyboard = [
+            [InlineKeyboardButton("اسپاتیفای", callback_data='spotify'),
+             InlineKeyboardButton("ساند کلاود", callback_data='soundcloud'),
+             InlineKeyboardButton("تیک تاک", callback_data='tiktok')],
+            [InlineKeyboardButton("یوتیوب", callback_data='youtube'),
+             InlineKeyboardButton("آپارات", callback_data='aparat'),
+             InlineKeyboardButton("اینستاگرام", callback_data='instagram')],
+            [InlineKeyboardButton("فروشگاه", callback_data='shop'),
+             InlineKeyboardButton("فایل به لینک", callback_data='file_to_link')],
+            [InlineKeyboardButton("تنظیمات | مدیریت جساب", callback_data='settings')],
+            [InlineKeyboardButton("بخش ادمین", callback_data='admin_menu')]
+        ]
+    else:
+        keyboard = [
+            [InlineKeyboardButton("اسپاتیفای", callback_data='spotify'),
+             InlineKeyboardButton("ساند کلاود", callback_data='soundcloud'),
+             InlineKeyboardButton("تیک تاک", callback_data='tiktok')],
+            [InlineKeyboardButton("یوتیوب", callback_data='youtube'),
+             InlineKeyboardButton("آپارات", callback_data='aparat'),
+             InlineKeyboardButton("اینستاگرام", callback_data='instagram')],
+            [InlineKeyboardButton("فروشگاه", callback_data='shop'),
+             InlineKeyboardButton("فایل به لینک", callback_data='file_to_link')],
+            [InlineKeyboardButton("تنظیمات | مدیریت جساب", callback_data='settings')]
+        ]
+
     reply_markup = InlineKeyboardMarkup(keyboard)
+    greeting = f"سلام {user.first_name}"
 
     if update.callback_query:
-        await update.callback_query.edit_message_text(f"سلام {user.first_name}", reply_markup=reply_markup)
+        await update.callback_query.edit_message_text(greeting, reply_markup=reply_markup)
     else:
-        await update.message.reply_text(f"سلام {user.first_name}", reply_markup=reply_markup)
-
+        await update.message.reply_text(greeting, reply_markup=reply_markup)
+async def admin_menu(update: Update, context: CallbackContext):
+    user = update.effective_user
+    keyboard = [
+        [InlineKeyboardButton("آمار ربات",callback_data='bot_analyze'),InlineKeyboardButton("پیام همگانی", callback_data='everyone_message')],
+        [InlineKeyboardButton("بخش کاربران",callback_data='users_managment'),InlineKeyboardButton("بازگشت",callback_data='back_to_main')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.callback_query.edit_message_text("انتخاب کنید", reply_markup=reply_markup)
 # منوی فروشگاه
 async def store_menu(update: Update, context: CallbackContext):
     user = update.effective_user
@@ -142,6 +165,8 @@ async def handle_menu_callback(update: Update, context: CallbackContext):
         await file_menu(update, context)
     elif data == "file_handler":
         await file_handler(update, context)
+    elif data == "admin_menu":
+        await admin_menu(update, context)
 
 def daily_reset_task():
     """وظیفه زمان‌بندی شده برای ریست روزانه"""
