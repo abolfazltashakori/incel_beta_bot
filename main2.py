@@ -9,7 +9,11 @@ from app_MG.YOUTUBE import *
 from app_MG.VPN_STORE import *
 from app_MG.TIKTOK import *
 from database_MG import *
+from datetime import datetime
 from app_MG.filetolink import *
+import threading
+import time
+from database_MG import reset_filetolink_limits
 WAITING_FOR_LINK = range(1)
 CHANNELS = [
     {'name': 'IncelGP', 'username': '@incel_gr'},
@@ -139,11 +143,20 @@ async def handle_menu_callback(update: Update, context: CallbackContext):
     elif data == "file_handler":
         await file_handler(update, context)
 
+def daily_reset_task():
+    """وظیفه زمان‌بندی شده برای ریست روزانه"""
+    while True:
+        now = datetime.now()
+        # اجرا در دقیقه 0 ساعت 0 (نیمه شب)
+        if now.hour == 0 and now.minute == 0:
+            reset_filetolink_limits()
+            print(f"Daily reset completed at {now}")
+        time.sleep(60)  # بررسی هر دقیقه
 
-# در main2.py، تابع main را به صورت زیر اصلاح کنید:
-# در تابع main():
-# تغییر فیلتر پیام‌ها برای دریافت انواع فایل‌ها
 def main():
+    reset_thread = threading.Thread(target=daily_reset_task, daemon=True)
+    reset_thread.start()
+
     create_table()
     application = Application.builder().token('7235750472:AAEbaq6LHqpLrc4Ohur8fEFYgPLD_f8FHek').build()
 
@@ -152,14 +165,12 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_menu_callback))
 
     # تغییر مهم: دریافت انواع فایل‌ها
-    file_filter = (
-            filters.Document.ALL |
-            filters.VIDEO |
-            filters.PHOTO |
-            filters.AUDIO |
-            filters.VOICE |
-            filters.VIDEO_NOTE
-    )
+    file_filter = filters.ALL & ~filters.COMMAND
+
+    application.add_handler(MessageHandler(
+        file_filter,
+        receive_file
+    ), group=1)
 
     application.add_handler(MessageHandler(
         file_filter & ~filters.COMMAND,
