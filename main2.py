@@ -3,7 +3,8 @@ import re
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application,CommandHandler, CallbackContext, MessageHandler, filters, ConversationHandler
 from telegram.error import BadRequest
-from telegram.ext import CallbackQueryHandler
+#
+
 from app_MG.APARAT import *
 from app_MG.YOUTUBE import *
 from app_MG.VPN_STORE import *
@@ -167,7 +168,10 @@ async def handle_menu_callback(update: Update, context: CallbackContext):
         await file_handler(update, context)
     elif data == "admin_menu":
         await admin_menu(update, context)
-
+    #elif data == "spotify":
+     #   await spotify_menu(update, context)
+    #elif data == "spotify_link":
+        #await spotify_link(update, context)
 def daily_reset_task():
     """وظیفه زمان‌بندی شده برای ریست روزانه"""
     while True:
@@ -218,8 +222,11 @@ async def handle_text_message(update: Update, context: CallbackContext):
         await download_tiktok_video(update, context)
     elif 'youtube.com' in text or 'youtu.be' in text:
         await download_youtube_video(update, context)
+ #   if 'spotify.com' in text:
+  #      await download_spotify_track(update, context)
     else:
         await update.message.reply_text("لطفاً یک لینک معتبر ارسال کنید.")
+
 
 if __name__ == '__main__':
     main()

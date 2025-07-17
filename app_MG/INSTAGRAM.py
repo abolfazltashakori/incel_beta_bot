@@ -6,10 +6,21 @@ import yt_dlp
 # تابعی برای چاپ لاگ‌های مربوط به دانلود
 def progress_hook(d):
     if d['status'] == 'downloading':
-        percent = d.get('downloaded_bytes', 0) / d.get('total_bytes', 1) * 100  # جلوگیری از خطای تقسیم بر صفر
-        speed = d.get('speed', 0) / 1024  # تبدیل سرعت به کیلوبایت در ثانیه
-        eta = d.get('eta', 0)
-        print(f"در حال دانلود: {percent:.2f}% | سرعت دانلود: {speed:.2f} KB/s | ETA: {eta}s")
+        # دریافت مقادیر با بررسی وجود داشتن
+        downloaded_bytes = d.get('downloaded_bytes', 0) or 0
+        total_bytes = d.get('total_bytes')
+
+        # اگر total_bytes وجود نداشت یا صفر بود
+        if not total_bytes:
+            total_bytes = 1  # مقدار پیش‌فرض برای جلوگیری از خطا
+
+        percent = downloaded_bytes / total_bytes * 100
+        speed = d.get('speed', 0) or 0
+        speed_kb = speed / 1024  # تبدیل به کیلوبایت
+
+        eta = d.get('eta', 0) or 0
+        print(f"در حال دانلود: {percent:.2f}% | سرعت دانلود: {speed_kb:.2f} KB/s | ETA: {eta}s")
+
     elif d['status'] == 'finished':
         print(f"دانلود تمام شد: {d['filename']}")
 
