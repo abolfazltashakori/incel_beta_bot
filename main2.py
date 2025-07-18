@@ -4,7 +4,7 @@ from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboard
 from telegram.ext import Application,CommandHandler, CallbackContext, MessageHandler, filters, ConversationHandler
 from telegram.error import BadRequest
 #
-
+from app_MG.ADMIN import *
 from app_MG.APARAT import *
 from app_MG.YOUTUBE import *
 from app_MG.VPN_STORE import *
@@ -79,28 +79,31 @@ async def main_menu(update: Update, context: CallbackContext):
 
     if user.id == admin_id:  # مقایسه عددی
         keyboard = [
-            [InlineKeyboardButton("اسپاتیفای", callback_data='spotify'),
-             InlineKeyboardButton("ساند کلاود", callback_data='soundcloud'),
-             InlineKeyboardButton("تیک تاک", callback_data='tiktok')],
-            [InlineKeyboardButton("یوتیوب", callback_data='youtube'),
-             InlineKeyboardButton("آپارات", callback_data='aparat'),
-             InlineKeyboardButton("اینستاگرام", callback_data='instagram')],
+
+            # [InlineKeyboardButton("اسپاتیفای", callback_data='spotify'),
+            # InlineKeyboardButton("ساند کلاود", callback_data='soundcloud'),
+            [InlineKeyboardButton("تیک تاک", callback_data='tiktok'),InlineKeyboardButton("آپارات", callback_data='aparat')],
+            # [InlineKeyboardButton("یوتیوب", callback_data='youtube'),
+            #[InlineKeyboardButton("آپارات", callback_data='aparat')],
+            # InlineKeyboardButton("اینستاگرام", callback_data='instagram')],
             [InlineKeyboardButton("فروشگاه", callback_data='shop'),
              InlineKeyboardButton("فایل به لینک", callback_data='file_to_link')],
-            [InlineKeyboardButton("تنظیمات | مدیریت جساب", callback_data='settings')],
+            [InlineKeyboardButton("تنظیمات | مدیریت حساب", callback_data='settings')],
             [InlineKeyboardButton("بخش ادمین", callback_data='admin_menu')]
         ]
     else:
         keyboard = [
-            [InlineKeyboardButton("اسپاتیفای", callback_data='spotify'),
-             InlineKeyboardButton("ساند کلاود", callback_data='soundcloud'),
-             InlineKeyboardButton("تیک تاک", callback_data='tiktok')],
-            [InlineKeyboardButton("یوتیوب", callback_data='youtube'),
-             InlineKeyboardButton("آپارات", callback_data='aparat'),
-             InlineKeyboardButton("اینستاگرام", callback_data='instagram')],
+            # [InlineKeyboardButton("اسپاتیفای", callback_data='spotify'),
+            # InlineKeyboardButton("ساند کلاود", callback_data='soundcloud'),
+            [InlineKeyboardButton("تیک تاک", callback_data='tiktok'),InlineKeyboardButton("آپارات", callback_data='aparat')],
+
+            # [InlineKeyboardButton("یوتیوب", callback_data='youtube'),
+            #[InlineKeyboardButton("آپارات", callback_data='aparat')],
+            # InlineKeyboardButton("اینستاگرام", callback_data='instagram')],
+
             [InlineKeyboardButton("فروشگاه", callback_data='shop'),
              InlineKeyboardButton("فایل به لینک", callback_data='file_to_link')],
-            [InlineKeyboardButton("تنظیمات | مدیریت جساب", callback_data='settings')]
+            [InlineKeyboardButton("تنظیمات | مدیریت حساب", callback_data='settings')]
         ]
 
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -110,14 +113,7 @@ async def main_menu(update: Update, context: CallbackContext):
         await update.callback_query.edit_message_text(greeting, reply_markup=reply_markup)
     else:
         await update.message.reply_text(greeting, reply_markup=reply_markup)
-async def admin_menu(update: Update, context: CallbackContext):
-    user = update.effective_user
-    keyboard = [
-        [InlineKeyboardButton("آمار ربات",callback_data='bot_analyze'),InlineKeyboardButton("پیام همگانی", callback_data='everyone_message')],
-        [InlineKeyboardButton("بخش کاربران",callback_data='users_managment'),InlineKeyboardButton("بازگشت",callback_data='back_to_main')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.callback_query.edit_message_text("انتخاب کنید", reply_markup=reply_markup)
+
 # منوی فروشگاه
 async def store_menu(update: Update, context: CallbackContext):
     user = update.effective_user
@@ -172,6 +168,16 @@ async def handle_menu_callback(update: Update, context: CallbackContext):
      #   await spotify_menu(update, context)
     #elif data == "spotify_link":
         #await spotify_link(update, context)
+    elif data == "everyone_message":
+        await everyone_message(update, context)
+    elif data == "users_managment":
+        await users_managment(update, context)
+    elif data == "bot_analyze":
+        await bot_analyze(update, context)
+    if data == "bot_analyze":
+        await bot_analyze(update, context)
+    elif data == "refresh_stats":  # اضافه کردن این حالت جدید
+        await bot_analyze(update, context)
 def daily_reset_task():
     """وظیفه زمان‌بندی شده برای ریست روزانه"""
     while True:
@@ -181,19 +187,34 @@ def daily_reset_task():
             reset_filetolink_limits()
             print(f"Daily reset completed at {now}")
         time.sleep(60)  # بررسی هر دقیقه
+def daily_stats_task():
+    """وظیفه زمان‌بندی شده برای ثبت آمار روزانه"""
+    while True:
+        now = datetime.now()
+        # اجرا در دقیقه 0 ساعت 0 (نیمه شب)
+        if now.hour == 0 and now.minute == 0:
+            update_daily_stats()
+            print(f"Daily stats updated at {now}")
+        time.sleep(60)  # بررسی هر دقیقه
+
+def after_successful_operation():
+    increment_operations_count()
 
 def main():
+    create_table()
     reset_thread = threading.Thread(target=daily_reset_task, daemon=True)
     reset_thread.start()
 
-    create_table()
-    application = Application.builder().token('7235750472:AAEbaq6LHqpLrc4Ohur8fEFYgPLD_f8FHek').build()
 
+    application = Application.builder().token('7235750472:AAEbaq6LHqpLrc4Ohur8fEFYgPLD_f8FHek').build()
+    stats_thread = threading.Thread(target=daily_stats_task, daemon=True)
+    stats_thread.start()
     # هندلرهای اصلی
     application.add_handler(CommandHandler('start', check_membership_and_show_menu))
     application.add_handler(CallbackQueryHandler(handle_menu_callback))
 
-    # تغییر مهم: دریافت انواع فایل‌ها
+
+
     file_filter = filters.ALL & ~filters.COMMAND
 
     application.add_handler(MessageHandler(

@@ -4,104 +4,125 @@ from telegram.ext import CallbackContext
 import yt_dlp
 import logging
 
-# تنظیم لاگ‌گیری
-logging.basicConfig(level=logging.INFO)
+# تنظیمات لاگ‌گیری
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 logger = logging.getLogger(__name__)
 
 
-# تابعی برای چاپ لاگ‌های مربوط به دانلود
 def progress_hook(d):
     if d['status'] == 'downloading':
-        # دریافت مقادیر با بررسی وجود داشتن
-        downloaded_bytes = d.get('downloaded_bytes', 0) or 0
-        total_bytes = d.get('total_bytes')
+        try:
+            downloaded_bytes = d.get('downloaded_bytes', 0) or 0
+            total_bytes = d.get('total_bytes', 1) or 1
 
-        # اگر total_bytes وجود نداشت یا صفر بود
-        if not total_bytes:
-            total_bytes = 1  # مقدار پیش‌فرض برای جلوگیری از خطا
+            # تبدیل به عدد در صورت نیاز
+            downloaded_bytes = float(downloaded_bytes) if downloaded_bytes else 0
+            total_bytes = float(total_bytes) if total_bytes else 1
 
-        percent = downloaded_bytes / total_bytes * 100
-        speed = d.get('speed', 0) or 0
-        speed_kb = speed / 1024  # تبدیل به کیلوبایت
+            percent = (downloaded_bytes / total_bytes) * 100
+            speed = (d.get('speed', 0) or 0) / 1024  # KB/s
+            eta = d.get('eta', 0) or 0
 
-        eta = d.get('eta', 0) or 0
-        logger.info(f"در حال دانلود: {percent:.2f}% | سرعت دانلود: {speed_kb:.2f} KB/s | ETA: {eta}s")
+            logger.info(f"پیشرفت: {percent:.1f}% | سرعت: {speed:.2f} KB/s | زمان باقی‌مانده: {eta}s")
+        except Exception as e:
+            logger.error(f"خطا در پردازش پیشرفت: {str(e)}")
 
     elif d['status'] == 'finished':
-        logger.info(f"دانلود تمام شد: {d['filename']}")
+        logger.info(f"دانلود کامل شد: {d.get('filename', 'فایل ناشناخته')}")
 
 
-# منوی یوتیوب
 async def youtube_menu(update: Update, context: CallbackContext):
     keyboard = [
         [InlineKeyboardButton("ارسال لینک", callback_data="youtube_link")],
         [InlineKeyboardButton("بازگشت", callback_data="back_to_main")],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.callback_query.edit_message_text("عملیات مورد نظر را انتخاب کنید", reply_markup=reply_markup)
+    await update.callback_query.edit_message_text(
+        "🎬 منوی یوتیوب - لطفا عمل مورد نظر را انتخاب کنید:",
+        reply_markup=reply_markup
+    )
 
 
-# درخواست لینک از کاربر
 async def youtube_link(update: Update, context: CallbackContext):
     await update.callback_query.answer()
-    await update.callback_query.edit_message_text("لطفاً لینک ویدیوی یوتیوب را ارسال کنید.")
-    return "WAITING_FOR_LINK"  # وضعیت برای دریافت لینک
+    await update.callback_query.edit_message_text(
+        "🔗 لطفاً لینک ویدیوی یوتیوب را ارسال کنید\n\n"
+        "⚠️ توجه: ویدیوهای طولانی‌تر از 30 دقیقه پشتیبانی نمی‌شوند"
+    )
+    return "WAITING_FOR_LINK"
 
 
-# دانلود ویدیو از یوتیوب
 async def download_youtube_video(update: Update, context: CallbackContext):
-    url = update.message.text  # دریافت لینک ویدیو از پیام
+    url = update.message.text.strip()
 
-    # مسیر فایل کوکی‌ها - استفاده از مسیر مطلق
-    cookie_path = os.path.join(os.path.dirname(__file__), 'youtube_cookies.txt')
+    # اعتبارسنجی اولیه لینک
+    if not url.startswith(('http://', 'https://')):
+        await update.message.reply_text("❌ فرمت لینک نامعتبر است!")
+        return "WAITING_FOR_LINK"
 
-    # تنظیمات پیشرفته yt-dlp
+    # تنظیمات دانلود
     ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
+        'format': 'bestvideo[height<=720]+bestaudio/best[height<=720]',
         'outtmpl': 'downloads/%(title)s.%(ext)s',
-        'quiet': True,
         'progress_hooks': [progress_hook],
-        'cookiefile': cookie_path,
+        'cookiefile': os.path.join(os.path.dirname(__file__), 'youtube_cookies.txt'),
         'ignoreerrors': True,
+        'quiet': True,
         'no_warnings': True,
         'restrictfilenames': True,
         'merge_output_format': 'mp4',
-        'postprocessor_args': ['-threads', '4'],  # استفاده از چند هسته برای پردازش
+        'postprocessor_args': ['-threads', '4'],
         'http_headers': {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Accept-Language': 'en-US,en;q=0.9',
-            'Referer': 'https://www.youtube.com/',
-        }
+        },
+        'extract_flat': False,
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # اعتبارسنجی کوکی‌ها
-            if os.path.exists(cookie_path):
-                logger.info("استفاده از کوکی‌ها برای احراز هویت")
-            else:
-                logger.warning("فایل کوکی یافت نشد! دانلود بدون احراز هویت انجام می‌شود.")
+            # دریافت اطلاعات ویدیو
+            try:
+                info_dict = ydl.extract_info(url, download=False)
+                if not info_dict:
+                    raise ValueError("اطلاعات ویدیو دریافت نشد")
+            except Exception as e:
+                logger.error(f"خطا در دریافت اطلاعات: {str(e)}")
+                await update.message.reply_text(
+                    "❌ خطا در دریافت اطلاعات ویدیو!\n"
+                    "دلایل احتمالی:\n"
+                    "- لینک نامعتبر\n"
+                    "- ویدیو خصوصی/حذف شده\n"
+                    "- محدودیت منطقه‌ای\n\n"
+                    "لطفاً لینک را بررسی و مجدد ارسال کنید."
+                )
+                return "WAITING_FOR_LINK"
 
-            # استخراج اطلاعات ویدیو
-            info_dict = ydl.extract_info(url, download=False)
-            video_title = info_dict.get('title', 'video')
-            duration = info_dict.get('duration', 0)
-
-            # محدودیت مدت زمان (اختیاری)
+            # بررسی مدت زمان ویدیو
             MAX_DURATION = 1800  # 30 دقیقه
+            duration = info_dict.get('duration', 0)
             if duration > MAX_DURATION:
-                await update.message.reply_text(f"❌ مدت زمان ویدیو نباید بیشتر از {MAX_DURATION // 60} دقیقه باشد.")
-                return
+                await update.message.reply_text(
+                    f"⏳ مدت زمان ویدیو ({duration // 60} دقیقه) بیشتر از حد مجاز ({MAX_DURATION // 60} دقیقه) است!"
+                )
+                return "WAITING_FOR_LINK"
 
-            await update.message.reply_text(f"⬇️ در حال دانلود: {video_title}...")
+            video_title = info_dict.get('title', 'ویدیو یوتیوب')
+            await update.message.reply_text(f"⏳ در حال دانلود: {video_title}...")
 
-            # دانلود واقعی ویدیو
-            ydl.download([url])
+            # دانلود ویدیو
+            try:
+                ydl.download([url])
+            except Exception as e:
+                logger.error(f"خطا در دانلود: {str(e)}")
+                await update.message.reply_text("❌ خطا در فرآیند دانلود!")
+                return "WAITING_FOR_LINK"
 
             # یافتن فایل دانلود شده
             file_path = ydl.prepare_filename(info_dict)
-
-            # اگر فایل ترکیب شده وجود ندارد، سعی در یافتن فایل اصلی
             if not os.path.exists(file_path):
                 base_path = os.path.splitext(file_path)[0]
                 for ext in ['.mp4', '.mkv', '.webm']:
@@ -109,45 +130,50 @@ async def download_youtube_video(update: Update, context: CallbackContext):
                         file_path = base_path + ext
                         break
 
-            # ارسال فایل به تلگرام
-            await update.message.reply_text("✅ ویدیو دانلود شد! در حال ارسال...")
+            if not os.path.exists(file_path):
+                raise FileNotFoundError("فایل دانلود شده یافت نشد")
+
+            # ارسال ویدیو
+            await update.message.reply_text("✅ دانلود با موفقیت انجام شد! در حال آپلود...")
             with open(file_path, 'rb') as video_file:
                 await update.message.reply_video(
                     video=video_file,
+                    caption=f"🎥 {video_title}",
                     supports_streaming=True,
-                    timeout=300  # افزایش زمان انتظار برای آپلود
+                    timeout=300,
+                    width=info_dict.get('width'),
+                    height=info_dict.get('height'),
+                    duration=duration
                 )
 
-            # حذف فایل موقت
-            os.remove(file_path)
+            # پاکسازی فایل موقت
+            try:
+                os.remove(file_path)
+            except:
+                logger.warning(f"خطا در حذف فایل موقت: {file_path}")
 
             # نمایش مجدد منو
-            keyboard = [
-                [InlineKeyboardButton("ارسال لینک", callback_data="youtube_link")],
-                [InlineKeyboardButton("بازگشت", callback_data="back_to_main")],
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text("عملیات مورد نظر را انتخاب کنید", reply_markup=reply_markup)
+            return await youtube_menu(update, context)
 
     except yt_dlp.DownloadError as e:
-        if "Sign in to confirm you're not a bot" in str(e):
-            logger.error("خطای احراز هویت: کوکی‌ها معتبر نیستند")
-            await update.message.reply_text(
-                "❌ خطا در احراز هویت! لطفاً فایل کوکی‌ها را به‌روزرسانی کنید.\n\n"
-                "راهنمای به‌روزرسانی کوکی‌ها:\n"
-                "1. از افزونه مرورگر 'Get cookies.txt' استفاده کنید\n"
-                "2. در YouTube.com وارد حساب خود شوید\n"
-                "3. کوکی‌ها را برای youtube.com استخراج کنید\n"
-                "4. فایل را با نام 'youtube_cookies.txt' در پوشه ربات آپلود کنید"
-            )
-        elif "Video unavailable" in str(e):
-            await update.message.reply_text("❌ ویدیو در دسترس نیست یا محدودیت منطقه‌ای دارد.")
+        error_msg = str(e).lower()
+        if "sign in" in error_msg:
+            msg = ("🔒 خطای احراز هویت!\n\n"
+                   "برای دانلود این ویدیو نیاز به احراز هویت دارید:\n"
+                   "1. از افزونه 'Get cookies.txt' در کروم استفاده کنید\n"
+                   "2. در YouTube.com وارد حساب شوید\n"
+                   "3. کوکی‌ها را استخراج کنید\n"
+                   "4. فایل را با نام 'youtube_cookies.txt' در پوشه ربات قرار دهید")
+        elif "unavailable" in error_msg:
+            msg = "🚫 ویدیو در دسترس نیست یا محدودیت منطقه‌ای دارد"
         else:
-            await update.message.reply_text(f"❌ خطا در دانلود ویدیو: {str(e)}")
-            logger.exception("خطا در دانلود یوتیوب")
+            msg = f"❌ خطای دانلود: {str(e)}"
+
+        await update.message.reply_text(msg)
+        logger.error(f"خطای یوتیوب: {str(e)}")
 
     except Exception as e:
-        await update.message.reply_text(f"❌ خطای سیستمی: {str(e)}")
-        logger.exception("خطای غیرمنتظره")
+        await update.message.reply_text(f"⚠️ خطای سیستمی: {str(e)}")
+        logger.exception("خطای غیرمنتظره در دانلود یوتیوب")
 
     return "WAITING_FOR_LINK"

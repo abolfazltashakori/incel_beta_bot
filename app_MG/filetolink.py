@@ -56,7 +56,7 @@ async def file_handler(update: Update, context: CallbackContext):
 
 async def receive_file(update: Update, context: CallbackContext):
     if not context.user_data.get('waiting_for_file'):
-        await update.message.reply_text("لطفاً ابتدا دکمه 'ارسال فایل' را انتخاب کنید.")
+
         return
 
     # شناسایی انواع مختلف محتوا
