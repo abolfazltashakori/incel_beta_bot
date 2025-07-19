@@ -3,8 +3,9 @@ import os
 import time
 import random
 import string
+from datetime import datetime, timedelta
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import CallbackContext
+from telegram.ext import CallbackContext, JobQueue
 import asyncio
 
 FTP_HOST = '185.235.196.18'
@@ -17,8 +18,8 @@ FTP_DIR = 'public_html'
 # تابع برای تولید نام فایل جدید
 def generate_filename(telegram_id, original_name=None):
     """تولید نام فایل با فرمت: telegramid_randomextension.extension"""
-    # تولید رشته تصادفی 6 کاراکتری
-    random_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+    # تولید رشته تصادفی 8 کاراکتری
+    random_str = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
 
     # استخراج پسوند فایل
     if original_name and '.' in original_name:
@@ -32,13 +33,28 @@ def generate_filename(telegram_id, original_name=None):
     return f"{telegram_id}_{random_str}.{ext}"
 
 
+# تابع حذف فایل از سرور FTP
+def delete_ftp_file(file_name):
+    try:
+        with ftplib.FTP() as ftp:
+            ftp.connect(FTP_HOST, FTP_PORT, timeout=60)
+            ftp.login(FTP_USER, FTP_PASS)
+            ftp.cwd(FTP_DIR)
+            ftp.delete(file_name)
+    except Exception as e:
+        print(f"Error deleting expired file: {e}")
+
+
 async def file_menu(update: Update, context: CallbackContext):
     keyboard = [
-        [InlineKeyboardButton("ارسال فایل", callback_data='file_handler')],
-        [InlineKeyboardButton("بازگشت", callback_data='back_to_main')],
+        [InlineKeyboardButton("📤 ارسال فایل", callback_data='file_handler')],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data='back_to_main')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.callback_query.edit_message_text("لطفاً یک فایل ارسال کنید.", reply_markup=reply_markup)
+    await update.callback_query.edit_message_text(
+        "📁 لطفاً یک فایل را برای من ارسال کنید:",
+        reply_markup=reply_markup
+    )
     context.user_data['waiting_for_file'] = True
 
 
@@ -47,16 +63,21 @@ async def file_handler(update: Update, context: CallbackContext):
     await query.answer()
 
     context.user_data['waiting_for_file'] = True
-    keyboard = [[InlineKeyboardButton("انصراف", callback_data='cancel_upload')]]
+    keyboard = [[InlineKeyboardButton("❌ انصراف", callback_data='cancel_upload')]]
     await query.edit_message_text(
-        "✅ حالت دریافت فایل فعال شد!\nلطفاً فایل خود را ارسال کنید.",
+        "✅ حالت دریافت فایل فعال شد!\n\n"
+        "لطفاً فایل خود را ارسال کنید. (هر نوع فایلی پذیرفته می‌شود)\n"
+        "⚠️ توجه: لینک دانلود به مدت 4 ساعت معتبر خواهد بود.",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
 async def receive_file(update: Update, context: CallbackContext):
     if not context.user_data.get('waiting_for_file'):
+        return
 
+    if not context.job_queue:
+        await update.message.reply_text("⚠️ خطای سیستم! لطفاً دوباره امتحان کنید.")
         return
 
     # شناسایی انواع مختلف محتوا
@@ -103,11 +124,10 @@ async def receive_file(update: Update, context: CallbackContext):
         user_id = update.message.from_user.id
         new_file_name = generate_filename(user_id, original_name)
 
-        # ارسال پیام پیشرفت
+        # ارسال پیام پیشرفت با طراحی زیباتر
         progress_message = await update.message.reply_text(
-            "📤 در حال آپلود فایل به سرور...\n"
-            "⏳ پیشرفت: 0%\n"
-            "🚀 سرعت: 0 KB/s\n"
+            "⏳ در حال پردازش فایل شما...\n"
+            "▰▱▱▱▱▱▱▱▱ 0%\n"
             "⏱ زمان سپری شده: 0 ثانیه"
         )
 
@@ -121,6 +141,9 @@ async def receive_file(update: Update, context: CallbackContext):
             uploaded_bytes += len(chunk)
             percent = (uploaded_bytes / file_size) * 100
 
+            # ایجاد نوار پیشرفت
+            progress_bar = "▰" * int(percent / 10) + "▱" * (10 - int(percent / 10))
+
             current_time = time.time()
             elapsed_time = current_time - start_time
             speed = uploaded_bytes / elapsed_time / 1024  # KB/s
@@ -131,9 +154,10 @@ async def receive_file(update: Update, context: CallbackContext):
                         chat_id=progress_message.chat_id,
                         message_id=progress_message.message_id,
                         text=(
-                            f"📤 در حال آپلود فایل به سرور...\n"
-                            f"⏳ پیشرفت: {percent:.1f}%\n"
-                            f"🚀 سرعت: {speed:.1f} KB/s\n"
+                            f"🚀 در حال آپلود فایل...\n"
+                            f"{progress_bar} {percent:.1f}%\n"
+                            f"📦 حجم: {uploaded_bytes / 1024 / 1024:.1f}MB / {file_size / 1024 / 1024:.1f}MB\n"
+                            f"⚡ سرعت: {speed:.1f} KB/s\n"
                             f"⏱ زمان سپری شده: {int(elapsed_time)} ثانیه"
                         )
                     )
@@ -152,10 +176,33 @@ async def receive_file(update: Update, context: CallbackContext):
             try:
                 download_link = await upload_to_ftp(file_path, new_file_name, update_progress)
 
+                # محاسبه زمان انقضا
+                expire_time = datetime.now() + timedelta(hours=4)
+                expire_time_str = expire_time.strftime("%Y-%m-%d %H:%M:%S")
+
+                # زمان‌بندی حذف فایل بعد از 4 ساعت
+                context.job_queue.run_once(
+                    lambda ctx: delete_ftp_file(new_file_name),
+                    4 * 60 * 60  # 4 ساعت به ثانیه
+                )
+
+                # ایجاد دکمه برای لینک دانلود
+                keyboard = [
+                    [InlineKeyboardButton("📥 دانلود فایل", url=download_link)],
+                    [InlineKeyboardButton("🏠 بازگشت به منوی اصلی", callback_data='back_to_main')]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+
                 await context.bot.edit_message_text(
                     chat_id=progress_message.chat_id,
                     message_id=progress_message.message_id,
-                    text=f"✅ فایل با موفقیت آپلود شد!\nلینک دانلود: {download_link}"
+                    text=(
+                        "✅ فایل شما با موفقیت آپلود شد!\n\n"
+                        f"🔗 لینک دانلود:\n{download_link}\n\n"
+                        f"⏳ این لینک تا {expire_time_str} معتبر است\n"
+                        "برای دانلود فایل روی دکمه زیر کلیک کنید:"
+                    ),
+                    reply_markup=reply_markup
                 )
             except Exception as e:
                 await context.bot.edit_message_text(
@@ -170,7 +217,7 @@ async def receive_file(update: Update, context: CallbackContext):
 
 
 async def upload_to_ftp(file_path, file_name, progress_callback=None, max_retries=3):
-    CHUNK_SIZE = 4194304  # 4MB
+    CHUNK_SIZE = 7194304  # 7MB
 
     for attempt in range(max_retries):
         try:

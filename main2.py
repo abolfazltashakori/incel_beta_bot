@@ -1,9 +1,9 @@
 import os
 import re
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application,CommandHandler, CallbackContext, MessageHandler, filters, ConversationHandler
+from telegram.ext import Application,CommandHandler, CallbackContext, MessageHandler, filters, ConversationHandler,ApplicationBuilder
 from telegram.error import BadRequest
-#
+from app_MG.SETTING import *
 from app_MG.ADMIN import *
 from app_MG.APARAT import *
 from app_MG.YOUTUBE import *
@@ -178,6 +178,14 @@ async def handle_menu_callback(update: Update, context: CallbackContext):
         await bot_analyze(update, context)
     elif data == "refresh_stats":  # اضافه کردن این حالت جدید
         await bot_analyze(update, context)
+    elif data == "wallet":
+        await wallet_menu(update, context)
+    elif data == "view_balance":
+        await view_balance(update, context)
+    elif data == "back_to_wallet":
+        await wallet_menu(update, context)
+    elif data == "settings":
+        await wallet_menu(update, context)
 def daily_reset_task():
     """وظیفه زمان‌بندی شده برای ریست روزانه"""
     while True:
@@ -206,9 +214,43 @@ def main():
     reset_thread.start()
 
 
-    application = Application.builder().token('7235750472:AAEbaq6LHqpLrc4Ohur8fEFYgPLD_f8FHek').build()
+    application = ApplicationBuilder().token('7235750472:AAEbaq6LHqpLrc4Ohur8fEFYgPLD_f8FHek').build()
     stats_thread = threading.Thread(target=daily_stats_task, daemon=True)
     stats_thread.start()
+    trans_conv_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(pending_transactions, pattern='^pending_transactions$')],
+        states={
+            TRANSACTION_SELECTION: [
+                CallbackQueryHandler(select_transaction, pattern='^trans_\d+$')
+            ],
+            TRANSACTION_ACTION: [
+                CallbackQueryHandler(view_receipt, pattern='^view_receipt$'),
+                CallbackQueryHandler(approve_transaction, pattern='^approve_trans$'),
+                CallbackQueryHandler(reject_transaction, pattern='^reject_trans$'),
+                CallbackQueryHandler(back_to_transactions, pattern='^back_to_transactions$')
+            ]
+        },
+        fallbacks=[
+            CallbackQueryHandler(back_to_transactions, pattern='^back_to_transactions$')
+        ],
+        per_message=False
+    )
+
+    wallet_conv_handler = ConversationHandler(
+        entry_points=[CallbackQueryHandler(wallet_cart, pattern='^wallet_cart$')],
+        states={
+            AMOUNT: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_amount)],
+            RECEIPT: [MessageHandler(filters.PHOTO | filters.Document.IMAGE, get_receipt)]
+        },
+        fallbacks=[
+            CallbackQueryHandler(cancel_transaction, pattern='^cancel_transaction$')
+        ],
+        per_message=False
+    )
+
+    application.add_handler(wallet_conv_handler)
+
+    application.add_handler(trans_conv_handler)
     # هندلرهای اصلی
     application.add_handler(CommandHandler('start', check_membership_and_show_menu))
     application.add_handler(CallbackQueryHandler(handle_menu_callback))

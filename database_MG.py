@@ -4,7 +4,7 @@ import datetime
 
 def create_connection():
     """ایجاد اتصال به دیتابیس"""
-    return sqlite3.connect('main_beta_mydatabase.db', isolation_level=None)
+    return sqlite3.connect('main_beta_1_0_1_mydatabase.db', isolation_level=None)
 
 
 def create_table():
@@ -13,7 +13,7 @@ def create_table():
     try:
         cursor = conn.cursor()
 
-        # ایجاد جدول users
+        # ایجاد جدول users (کامنت خارج از رشته SQL)
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,7 +42,7 @@ def create_table():
         )
         ''')
 
-        # ایجاد جدول daily_stats (جدید)
+        # ایجاد جدول daily_stats
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS daily_stats (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,6 +50,19 @@ def create_table():
             total_users INTEGER DEFAULT 0,
             new_users INTEGER DEFAULT 0,
             operations INTEGER DEFAULT 0
+        )
+        ''')
+
+        # ایجاد جدول transactions
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            amount INTEGER,
+            receipt TEXT,
+            status TEXT DEFAULT 'pending',
+            transaction_date TEXT DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
         )
         ''')
 
@@ -335,6 +348,68 @@ def get_daily_stats(date=None):
     finally:
         conn.close()
 
+def get_user_id_by_telegram(telegram_id):
+    """دریافت شناسه کاربر بر اساس تلگرام آیدی"""
+    conn = create_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM users WHERE telegram_id = ?", (telegram_id,))
+        result = cursor.fetchone()
+        return result[0] if result else None
+    except sqlite3.Error as e:
+        print(f"خطای پایگاه داده: {e}")
+        return None
+    finally:
+        conn.close()
+
+def add_transaction(user_id, amount, receipt=None):
+    """ثبت تراکنش جدید"""
+    conn = create_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''
+        INSERT INTO transactions (user_id, amount, receipt)
+        VALUES (?, ?, ?)
+        ''', (user_id, amount, receipt))
+        conn.commit()
+        return cursor.lastrowid
+    except sqlite3.Error as e:
+        print(f"خطای پایگاه داده: {e}")
+        return False
+    finally:
+        conn.close()
+
+def update_balance(user_id, amount):
+    """افزایش موجودی کاربر"""
+    conn = create_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''
+        UPDATE users 
+        SET balance = balance + ?
+        WHERE id = ?
+        ''', (amount, user_id))
+        conn.commit()
+        return cursor.rowcount > 0
+    except sqlite3.Error as e:
+        print(f"خطای پایگاه داده: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_user_balance(telegram_id):
+    """دریافت موجودی کاربر"""
+    conn = create_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT balance FROM users WHERE telegram_id = ?", (telegram_id,))
+        result = cursor.fetchone()
+        return result[0] if result else 0
+    except sqlite3.Error as e:
+        print(f"خطای پایگاه داده: {e}")
+        return 0
+    finally:
+        conn.close()
 
 def get_monthly_stats():
     """دریافت آمار ماهانه"""
@@ -397,5 +472,68 @@ def get_last_30_days_stats():
     except sqlite3.Error as e:
         print(f"خطای پایگاه داده: {e}")
         return []
+    finally:
+        conn.close()
+
+def get_pending_transactions():
+    """دریافت تراکنش‌های در انتظار تایید"""
+    conn = create_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''
+        SELECT transactions.id, user_id, amount, receipt, transaction_date, users.telegram_id as user_telegram_id
+        FROM transactions 
+        JOIN users ON transactions.user_id = users.id
+        WHERE status = 'pending'
+        ''')
+        columns = [col[0] for col in cursor.description]
+        results = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        return results
+    except sqlite3.Error as e:
+        print(f"خطای پایگاه داده: {e}")
+        return []
+    finally:
+        conn.close()
+
+def get_transaction_details(transaction_id):
+    """دریافت جزئیات کامل یک تراکنش"""
+    conn = create_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''
+        SELECT 
+            transactions.id,
+            transactions.amount,
+            transactions.transaction_date as date,
+            users.telegram_id as user_telegram_id,
+            users.first_name || ' ' || users.last_name as user_name
+        FROM transactions
+        JOIN users ON transactions.user_id = users.id
+        WHERE transactions.id = ?
+        ''', (transaction_id,))
+        columns = [col[0] for col in cursor.description]
+        row = cursor.fetchone()
+        return dict(zip(columns, row)) if row else None
+    except sqlite3.Error as e:
+        print(f"خطای پایگاه داده: {e}")
+        return None
+    finally:
+        conn.close()
+
+def update_transaction_status(transaction_id, status):
+    """به‌روزرسانی وضعیت تراکنش"""
+    conn = create_connection()
+    try:
+        cursor = conn.cursor()
+        cursor.execute('''
+        UPDATE transactions 
+        SET status = ?
+        WHERE id = ?
+        ''', (status, transaction_id))
+        conn.commit()
+        return cursor.rowcount > 0
+    except sqlite3.Error as e:
+        print(f"خطای پایگاه داده: {e}")
+        return False
     finally:
         conn.close()
