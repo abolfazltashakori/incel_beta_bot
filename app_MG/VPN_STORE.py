@@ -4,14 +4,21 @@ from telegram.ext import CallbackContext, CallbackQueryHandler
 # تابع برای نمایش منوی اصلی VPN
 async def vpn_menu(update: Update, context: CallbackContext):
     keyboard = [
-        [InlineKeyboardButton("بسته های عادی", callback_data='normal1')],
-        [InlineKeyboardButton("بسته های لایف تایم", callback_data='normal2')],
-        [InlineKeyboardButton("بسته های بلند مدت", callback_data='normal3')],
-        [InlineKeyboardButton("بسته های نامحدود", callback_data='normal4')],
+        [InlineKeyboardButton("📦 بسته‌های عادی (1 ماهه)", callback_data='normal1')],
+        [InlineKeyboardButton("🕒 بسته‌های لایف تایم", callback_data='normal2')],
+        [InlineKeyboardButton("📅 بسته‌های بلند مدت", callback_data='normal3')],
+        [InlineKeyboardButton("♾️ بسته‌های نامحدود", callback_data='normal4')],
+        [InlineKeyboardButton("🔙 بازگشت", callback_data='back_to_main')],
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.callback_query.edit_message_text("بسته مورد نظر را انتخاب کنید", reply_markup=reply_markup)
-
+    message = "🔒 <b>فروشگاه VPN</b>\n\n"
+    message += "لطفاً نوع بسته مورد نظر خود را انتخاب کنید:\n"
+    message += "────────────────────"
+    await update.callback_query.edit_message_text(
+        message,
+        reply_markup=reply_markup,
+        parse_mode='HTML'
+    )
 # تابع برای نمایش منوی "بسته های عادی"
 async def normal1_menu(query):
     keyboard = [

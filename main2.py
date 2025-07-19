@@ -55,12 +55,17 @@ async def check_membership_and_show_menu(update: Update, context: CallbackContex
         is_member = await is_user_member(update, context, channel['username'])
 
         if not is_member:
+            message = "🔔 <b>برای استفاده از ربات نیاز به عضویت دارید</b>\n\n"
+            message += f"لطفاً در کانال زیر عضو شوید:\n"
+            message += f"📢 {channel['name']}\n"
+            message += "پس از عضویت، دکمه ✅ بررسی عضویت را بزنید"
+
             keyboard = [
                 [InlineKeyboardButton(f"عضویت در {channel['name']}", url=f"https://t.me/{channel['username'][1:]}")],
-                [InlineKeyboardButton("بازگشت", callback_data="back_to_main")]
+                [InlineKeyboardButton("✅ بررسی عضویت", callback_data="check_membership")],
+                [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_main")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-
             if update.callback_query:
                 await update.callback_query.edit_message_text(f"برای استفاده از ربات، لطفاً به کانال {channel['name']} عضو شوید.",
                                                              reply_markup=reply_markup)
@@ -77,37 +82,25 @@ async def main_menu(update: Update, context: CallbackContext):
     user = update.effective_user  # استفاده از effective_user برای پشتیبانی از هم callback و هم message
     admin_id = 5381391685  # تغییر به عددی (بدون کوتیشن)
 
-    if user.id == admin_id:  # مقایسه عددی
+    if user.id == admin_id:
         keyboard = [
-
-            # [InlineKeyboardButton("اسپاتیفای", callback_data='spotify'),
-            # InlineKeyboardButton("ساند کلاود", callback_data='soundcloud'),
-            [InlineKeyboardButton("تیک تاک", callback_data='tiktok'),InlineKeyboardButton("آپارات", callback_data='aparat')],
-            # [InlineKeyboardButton("یوتیوب", callback_data='youtube'),
-            #[InlineKeyboardButton("آپارات", callback_data='aparat')],
-            # InlineKeyboardButton("اینستاگرام", callback_data='instagram')],
-            [InlineKeyboardButton("فروشگاه", callback_data='shop'),
-             InlineKeyboardButton("فایل به لینک", callback_data='file_to_link')],
-            [InlineKeyboardButton("تنظیمات | مدیریت حساب", callback_data='settings')],
-            [InlineKeyboardButton("بخش ادمین", callback_data='admin_menu')]
+            [InlineKeyboardButton("🎵 تیک تاک", callback_data='tiktok'),
+             InlineKeyboardButton("🎬 آپارات", callback_data='aparat')],
+            [InlineKeyboardButton("🛍 فروشگاه", callback_data='shop'),
+             InlineKeyboardButton("📎 فایل به لینک", callback_data='file_to_link')],
+            [InlineKeyboardButton("⚙️ تنظیمات | مدیریت حساب", callback_data='settings')],
+            [InlineKeyboardButton("👑 بخش ادمین", callback_data='admin_menu')]
         ]
     else:
         keyboard = [
-            # [InlineKeyboardButton("اسپاتیفای", callback_data='spotify'),
-            # InlineKeyboardButton("ساند کلاود", callback_data='soundcloud'),
-            [InlineKeyboardButton("تیک تاک", callback_data='tiktok'),InlineKeyboardButton("آپارات", callback_data='aparat')],
-
-            # [InlineKeyboardButton("یوتیوب", callback_data='youtube'),
-            #[InlineKeyboardButton("آپارات", callback_data='aparat')],
-            # InlineKeyboardButton("اینستاگرام", callback_data='instagram')],
-
-            [InlineKeyboardButton("فروشگاه", callback_data='shop'),
-             InlineKeyboardButton("فایل به لینک", callback_data='file_to_link')],
-            [InlineKeyboardButton("تنظیمات | مدیریت حساب", callback_data='settings')]
+            [InlineKeyboardButton("🎵 تیک تاک", callback_data='tiktok'),
+             InlineKeyboardButton("🎬 آپارات", callback_data='aparat')],
+            [InlineKeyboardButton("🛍 فروشگاه", callback_data='shop'),
+             InlineKeyboardButton("📎 فایل به لینک", callback_data='file_to_link')],
+            [InlineKeyboardButton("⚙️ تنظیمات | مدیریت حساب", callback_data='settings')]
         ]
-
     reply_markup = InlineKeyboardMarkup(keyboard)
-    greeting = f"سلام {user.first_name}"
+    greeting = f"👋 سلام {user.first_name}!\n  خوش آمدید! 🎉"
 
     if update.callback_query:
         await update.callback_query.edit_message_text(greeting, reply_markup=reply_markup)
@@ -214,7 +207,7 @@ def main():
     reset_thread.start()
 
 
-    application = ApplicationBuilder().token('7235750472:AAEbaq6LHqpLrc4Ohur8fEFYgPLD_f8FHek').build()
+    application = ApplicationBuilder().token('7814860739:AAH30KuJbdba971CrZw6lnrZ38Rf0BaU9xQ').build()
     stats_thread = threading.Thread(target=daily_stats_task, daemon=True)
     stats_thread.start()
     trans_conv_handler = ConversationHandler(
