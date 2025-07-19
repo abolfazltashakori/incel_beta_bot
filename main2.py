@@ -51,9 +51,13 @@ async def check_membership_and_show_menu(update: Update, context: CallbackContex
     # ذخیره اطلاعات کاربر در پایگاه داده
     save_user_to_db(telegram_id, first_name, last_name, username, balance, auther, number, ban)
 
+
     for channel in CHANNELS:
         is_member = await is_user_member(update, context, channel['username'])
-
+        admin_id = 5381391685
+        if user.id == admin_id:
+            main_menu(update, context)
+            break
         if not is_member:
             message = "🔔 <b>برای استفاده از ربات نیاز به عضویت دارید</b>\n\n"
             message += f"لطفاً در کانال زیر عضو شوید:\n"
@@ -63,7 +67,7 @@ async def check_membership_and_show_menu(update: Update, context: CallbackContex
             keyboard = [
                 [InlineKeyboardButton(f"عضویت در {channel['name']}", url=f"https://t.me/{channel['username'][1:]}")],
                 [InlineKeyboardButton("✅ بررسی عضویت", callback_data="check_membership")],
-                [InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_main")]
+                #[InlineKeyboardButton("🔙 بازگشت", callback_data="back_to_main")]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             if update.callback_query:
